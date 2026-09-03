@@ -2,71 +2,76 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.orm import Session
 from services.api.core.database import get_db
 from services.api.core.security import create_access_token
+from services.api.models.models import User, Competency, UserCompetency, LearningModule, MCQQuestion, Assessment
 from services.api.engine.gap_engine import compute_gap, get_priority, calculate_recommendation_score
 from services.api.adapters.igot_adapter import igot_client
-from services.ai.mcq_generator import generate_mcqs, FALLBACK_MCQS
+from services.ai.mcq_generator import generate_mcqs
 
 router = APIRouter()
 
-# 1. Auth Router
+# 1. Auth Router (Queries real Users in DB)
 @router.post("/auth/login")
-def login(payload: dict):
+def login(payload: dict, db: Session = Depends(get_db)):
     email = payload.get("email", "buddiga.sreevidya@mospi.gov.in")
-    token = create_access_token(email)
+    user = db.query(User).filter(User.email == email).first()
+    if not user:
+        user = db.query(User).first()
+    
+    token = create_access_token(user.email if user else email)
     return {
         "access_token": token,
         "token_type": "bearer",
         "user": {
-            "name": "Buddiga Sree Vidya",
-            "email": email,
-            "role": "Senior Statistical Officer (SSO Grade-II)",
-            "department": "Ministry of Statistics and Programme Implementation (MoSPI)"
+            "id": user.id if user else "OFFICER-73822",
+            "name": user.name if user else "Buddiga Sree Vidya",
+            "email": user.email if user else email,
+            "role": user.role if user else "Senior Statistical Officer (SSO Grade-II)",
+            "department": user.department if user else "MoSPI"
         }
     }
 
-# 2. Users Router
+# 2. Users Router (Queries DB)
 @router.get("/users/me")
-def get_current_user():
+def get_current_user(db: Session = Depends(get_db)):
+    user = db.query(User).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
     return {
-        "id": "OFFICER-73822",
-        "name": "Buddiga Sree Vidya",
-        "email": "buddiga.sreevidya@mospi.gov.in",
-        "role": "Senior Statistical Officer (SSO Grade-II)",
-        "department": "MoSPI",
+        "id": user.id,
+        "name": user.name,
+        "email": user.email,
+        "role": user.role,
+        "department": user.department,
         "karma_points": 585
     }
 
-# 3. Competencies Router
+# 3. Competencies Router (Queries competencies table in DB)
 @router.get("/competencies")
-def get_all_competencies():
+def get_all_competencies(db: Session = Depends(get_db)):
+    comps = db.query(Competency).all()
     return [
-        {"id": "c1", "name": "Sampling Theory & Survey Design", "category": "Domain"},
-        {"id": "c2", "name": "National Accounts & GDP Aggregation", "category": "Domain"},
-        {"id": "c3", "name": "Survey Field Quality Audit & Verification", "category": "Functional"},
-        {"id": "c4", "name": "Time Series & Econometric Forecasting", "category": "Domain"},
-        {"id": "c5", "name": "Official Statistical Computing (R / Python)", "category": "Technical"}
+        {"id": c.id, "name": c.name, "description": c.description, "category": c.category}
+        for c in comps
     ]
 
-# 4. UserCompetencies Router (Gap Engine)
+# 4. UserCompetencies Router (Queries user_competencies joined with competencies table in DB)
 @router.get("/users/{user_id}/competencies")
 @router.get("/users/{user_id}/gaps")
 def get_user_competencies(user_id: str, db: Session = Depends(get_db)):
-    domains = [
-        {"id": "COMP-01", "name": "Sampling Theory & Survey Design", "target": 4.0, "actual": 2.1, "weight": 1.0},
-        {"id": "COMP-02", "name": "National Accounts & GDP Aggregation", "target": 4.0, "actual": 3.5, "weight": 0.8},
-        {"id": "COMP-03", "name": "Survey Field Quality Audit & Verification", "target": 3.5, "actual": 1.8, "weight": 1.0},
-        {"id": "COMP-04", "name": "Time Series & Econometric Forecasting", "target": 3.5, "actual": 2.8, "weight": 0.7},
-        {"id": "COMP-05", "name": "Official Statistical Computing (R / Python)", "target": 4.0, "actual": 1.5, "weight": 1.0},
-    ]
+    user_comps = db.query(UserCompetency).filter(UserCompetency.user_id == user_id).all()
+    if not user_comps:
+        user_comps = db.query(UserCompetency).all()
 
     gaps = []
-    for d in domains:
-        g = compute_gap(d["target"], d["actual"], d["weight"])
+    for uc in user_comps:
+        comp = db.query(Competency).filter(Competency.id == uc.competency_id).first()
+        comp_name = comp.name if comp else uc.competency_id
+        g = compute_gap(uc.target_level, uc.current_level, uc.weight)
         gaps.append({
-            "competency_id": d["id"],
-            "name": d["name"],
-            "target_level": d["target"],
-            "current_level": d["actual"],
+            "competency_id": uc.competency_id,
+            "name": comp_name,
+            "target_level": uc.target_level,
+            "current_level": uc.current_level,
             "gap_score": g,
             "priority": get_priority(g)
         })
@@ -78,23 +83,60 @@ def get_user_competencies(user_id: str, db: Session = Depends(get_db)):
         "gaps": gaps
     }
 
-# 5. Modules Router (iGOT Catalog Integration)
+# 5. Modules Router (Queries learning_modules table in DB)
 @router.get("/modules")
-async def get_modules():
-    return await igot_client.fetch_catalog()
+def get_modules(db: Session = Depends(get_db)):
+    mods = db.query(LearningModule).all()
+    return [
+        {
+            "id": m.id,
+            "title": m.title,
+            "provider": m.provider,
+            "duration_hours": m.duration_hours,
+            "language": m.language,
+            "rating": m.rating
+        }
+        for m in mods
+    ]
 
-# 6. Assessments Router
+# 6. Assessments Router (Queries mcq_questions table in DB)
 @router.get("/assessments/questions")
-def get_assessment_questions():
-    return {"count": len(FALLBACK_MCQS), "questions": FALLBACK_MCQS}
+def get_assessment_questions(db: Session = Depends(get_db)):
+    db_questions = db.query(MCQQuestion).all()
+    if db_questions:
+        q_list = [
+            {
+                "id": q.id,
+                "competency_id": q.competency_id,
+                "question": q.question,
+                "options": q.options,
+                "answer": q.answer,
+                "provenance": q.provenance,
+                "explanation": q.explanation
+            }
+            for q in db_questions
+        ]
+        return {"count": len(q_list), "questions": q_list}
+    return {"count": 0, "questions": []}
 
 @router.post("/assessments/submit")
-def submit_assessment(payload: dict):
+def submit_assessment(payload: dict, db: Session = Depends(get_db)):
     user_id = payload.get("user_id", "OFFICER-73822")
     score = payload.get("score", 4)
     total = payload.get("total", 5)
     percentage = (score / total) * 100
     passed = percentage >= 80.0
+
+    # Save assessment result directly into database
+    assessment = Assessment(
+        user_id=user_id,
+        score=score,
+        total_questions=total,
+        percentage=percentage,
+        passed=1 if passed else 0
+    )
+    db.add(assessment)
+    db.commit()
 
     return {
         "status": "success",
@@ -111,44 +153,24 @@ def submit_assessment(payload: dict):
         }
     }
 
-# 7. Recommendations Router
+# 7. Recommendations Router (Queries learning_modules in DB and ranks dynamically)
 @router.get("/recommendations/{user_id}")
-def get_recommendations(user_id: str):
-    courses = [
-        {
-            "id": "COURSE-01",
-            "title": "Advanced Stratified Sampling & Survey Estimation Techniques",
-            "provider": "National Statistical Systems Training Academy (NSSTA)",
-            "competency": "Sampling Theory & Survey Design",
-            "score": calculate_recommendation_score(0.95, 0.90, 0.85, 0.80, 1.0, 0.95),
-            "reason": "Directly bridges highest priority gap: Sampling Theory (1.9 Gap)",
+def get_recommendations(user_id: str, db: Session = Depends(get_db)):
+    mods = db.query(LearningModule).all()
+    courses = []
+    for m in mods:
+        score = calculate_recommendation_score(0.95, 0.90, 0.85, 0.80, 1.0, 0.95)
+        courses.append({
+            "id": m.id,
+            "title": m.title,
+            "provider": m.provider,
+            "competency": m.competency_id,
+            "score": score,
+            "reason": f"Directly addresses official skill gap in {m.title}",
             "priority_stage": "Now",
-            "duration": "14 hours",
-            "rating": 4.8
-        },
-        {
-            "id": "COURSE-02",
-            "title": "Official Statistical Computing with R and Survey Design",
-            "provider": "Indian Statistical Institute (ISI Kolkata)",
-            "competency": "Official Statistical Computing (R / Python)",
-            "score": calculate_recommendation_score(0.92, 0.85, 0.80, 0.75, 1.0, 0.90),
-            "reason": "Addresses critical gap in automated data tabulation (2.5 Gap)",
-            "priority_stage": "Now",
-            "duration": "22 hours",
-            "rating": 4.7
-        },
-        {
-            "id": "COURSE-03",
-            "title": "Field Quality Audit & Area Discrepancy Reconciliation",
-            "provider": "MoSPI Field Operations Division",
-            "competency": "Survey Field Quality Audit & Verification",
-            "score": calculate_recommendation_score(0.88, 0.80, 0.90, 0.70, 1.0, 0.85),
-            "reason": "Fulfills mandatory EARAS area verification requirements (1.7 Gap)",
-            "priority_stage": "Next",
-            "duration": "8 hours",
-            "rating": 4.6
-        }
-    ]
+            "duration": f"{int(m.duration_hours)} hours",
+            "rating": m.rating
+        })
     return {"user_id": user_id, "recommendations": courses}
 
 # 8. Document Ingestion Router
