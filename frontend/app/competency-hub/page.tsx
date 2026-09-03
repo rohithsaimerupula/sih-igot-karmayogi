@@ -8,8 +8,6 @@ import {
 import Link from 'next/link'
 
 export default function CompetencyHubPage() {
-  const [activeDomain, setActiveDomain] = useState('Sampling Theory')
-
   const competencies = [
     { name: 'Sampling Theory & Design', level: 2.1, target: 4.0, gap: 1.9, priority: 'High', courses: 3 },
     { name: 'National Accounts Statistics', level: 3.5, target: 4.0, gap: 0.5, priority: 'Low', courses: 1 },
@@ -22,7 +20,6 @@ export default function CompetencyHubPage() {
     <div className="min-h-screen bg-[#F4F7FC]">
       <Header />
 
-      {/* Breadcrumb & Title */}
       <div className="bg-[#08214D] text-white py-6 border-b border-blue-900">
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
           <Link href="/" className="inline-flex items-center space-x-1 text-xs text-blue-200 hover:text-white mb-2">
@@ -50,9 +47,7 @@ export default function CompetencyHubPage() {
         </div>
       </div>
 
-      {/* Main Diagnostics Container */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 space-y-8">
-        {/* Top Summary Metrics */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
             <span className="text-xs text-slate-500 font-semibold uppercase">Demonstrated Level</span>
@@ -66,11 +61,11 @@ export default function CompetencyHubPage() {
             <span className="text-[11px] text-slate-500">Across 5 audited domains</span>
           </div>
 
-          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+          <Link href="/learning-path" className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm hover:border-blue-400 transition block group">
             <span className="text-xs text-slate-500 font-semibold uppercase">Recommended Courses</span>
-            <p className="text-2xl font-black text-blue-600 mt-1">15 Modules</p>
-            <span className="text-[11px] text-emerald-600 font-medium">Mapped to iGOT Catalog</span>
-          </div>
+            <p className="text-2xl font-black text-blue-600 mt-1 group-hover:text-blue-700">15 Modules &rarr;</p>
+            <span className="text-[11px] text-emerald-600 font-medium">Click to view personalized path</span>
+          </Link>
 
           <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
             <span className="text-xs text-slate-500 font-semibold uppercase">Verified Credentials</span>
@@ -79,9 +74,7 @@ export default function CompetencyHubPage() {
           </div>
         </div>
 
-        {/* Competency Gap Breakdown & Adaptive Quiz Action */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-          {/* Left Table / Radar */}
           <div className="lg:col-span-8 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-6">
             <div className="flex justify-between items-center">
               <div>
@@ -110,7 +103,6 @@ export default function CompetencyHubPage() {
                     </span>
                   </div>
 
-                  {/* Progress bar comparison */}
                   <div className="w-full bg-slate-200 h-2.5 rounded-full overflow-hidden relative">
                     <div 
                       className="bg-blue-600 h-full rounded-full transition-all"
@@ -122,7 +114,6 @@ export default function CompetencyHubPage() {
             </div>
           </div>
 
-          {/* Right Action: Adaptive Assessment Runner Launcher */}
           <div className="lg:col-span-4 space-y-6">
             <div className="bg-gradient-to-br from-[#08214D] to-[#1E50A0] text-white p-6 rounded-2xl shadow-xl space-y-4">
               <div className="inline-flex items-center space-x-1.5 px-2.5 py-0.5 rounded-full bg-amber-400 text-slate-950 font-bold text-[10px] uppercase">
@@ -141,16 +132,15 @@ export default function CompetencyHubPage() {
                 <p>&bull; Polygon NFT certificate on &gt;80% score</p>
               </div>
 
-              <button
-                onClick={() => alert('Starting Grounded MCQ Diagnostic Runner...')}
+              <Link
+                href="/assessment"
                 className="w-full py-3 rounded-xl bg-gradient-to-r from-amber-400 to-orange-400 hover:brightness-110 text-slate-950 font-bold text-xs shadow-lg transition flex items-center justify-center space-x-2"
               >
                 <Play className="w-3.5 h-3.5 fill-slate-950" />
                 <span>Start Competency Diagnostic</span>
-              </button>
+              </Link>
             </div>
 
-            {/* Blockchain Verifiable Passbook Anchor */}
             <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-2">
               <div className="flex items-center space-x-2 text-purple-700">
                 <Award className="w-5 h-5" />
